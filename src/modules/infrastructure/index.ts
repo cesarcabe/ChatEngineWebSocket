@@ -1,0 +1,1 @@
+export { EventCoordinator } from './services/EventCoordinator';
