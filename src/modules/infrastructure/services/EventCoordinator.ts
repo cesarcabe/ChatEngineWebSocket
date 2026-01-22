@@ -2,6 +2,7 @@ import { EvolutionClient, EvolutionEventHandler } from '@/modules/evolution';
 import { WorkspaceDiscovery } from '@/modules/auth';
 import { logger } from '@/core/logger';
 import { EvolutionMessage } from '@/types';
+import { SendQueue, SendQueueJob } from './SendQueue';
 
 interface WebSocketServerInterface {
   broadcastToWorkspace(workspaceId: string, event: string, data: any): void;
@@ -12,6 +13,7 @@ export class EventCoordinator {
   private wsServer: WebSocketServerInterface | null = null;
   private workspaceDiscovery: WorkspaceDiscovery;
   private subscribedInstances = new Set<string>();
+  private sendQueue: SendQueue | null = null;
 
   constructor(
     evolutionClient: EvolutionClient,
@@ -28,6 +30,13 @@ export class EventCoordinator {
    */
   setWebSocketServer(wsServer: WebSocketServerInterface): void {
     this.wsServer = wsServer;
+  }
+
+  /**
+   * Set SendQueue instance (optional)
+   */
+  setSendQueue(queue: SendQueue): void {
+    this.sendQueue = queue;
   }
 
   /**
@@ -438,6 +447,55 @@ export class EventCoordinator {
     options?: any;
   }): Promise<any> {
     return this.evolutionClient.sendMessage(instanceId, payload);
+  }
+
+  /**
+   * Enqueue a send message job for processing
+   */
+  async enqueueSendMessage(job: SendQueueJob): Promise<void> {
+    if (!this.sendQueue) {
+      await this.processSendJob(job);
+      return;
+    }
+
+    await this.sendQueue.enqueue(job);
+  }
+
+  /**
+   * Process a send message job (worker)
+   */
+  async processSendJob(job: SendQueueJob): Promise<void> {
+    try {
+      await this.evolutionClient.sendMessage(job.instanceId, {
+        number: job.remoteJid,
+        message: job.content,
+      });
+
+      this.wsServer?.broadcastToWorkspace(job.workspaceId, 'messageStatus', {
+        messageId: job.messageId,
+        status: 'sent',
+        conversationId: job.conversationId,
+      });
+
+      logger.info('SendQueue job sent', {
+        messageId: job.messageId,
+        workspaceId: job.workspaceId,
+        conversationId: job.conversationId,
+      });
+    } catch (error) {
+      this.wsServer?.broadcastToWorkspace(job.workspaceId, 'messageStatus', {
+        messageId: job.messageId,
+        status: 'failed',
+        conversationId: job.conversationId,
+      });
+
+      logger.error('SendQueue job failed', {
+        messageId: job.messageId,
+        workspaceId: job.workspaceId,
+        conversationId: job.conversationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   /**

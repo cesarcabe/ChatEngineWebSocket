@@ -284,10 +284,16 @@ export class WebSocketServer {
       updatedAt: now.toISOString(),
     });
 
-    // Forward to Evolution API via EventCoordinator
-    await this.eventCoordinator.sendMessage(instanceName, {
-      number: remoteJid,
-      message: data.content,
+    await this.eventCoordinator.enqueueSendMessage({
+      messageId: optimisticMessageId,
+      workspaceId: authResult.workspace.id,
+      conversationId: data.conversationId,
+      instanceId: instanceName,
+      remoteJid,
+      content: data.content,
+      replyToMessageId: data.replyToMessageId,
+      userId: authResult.user.id,
+      enqueuedAt: now.toISOString(),
     });
 
     socket.emit('messageSent', {

@@ -15,6 +15,11 @@ async function gracefulShutdown(server: any) {
       evolutionClient.disconnect();
     }
 
+    const sendQueue = (global as any).sendQueue;
+    if (sendQueue) {
+      await sendQueue.stop();
+    }
+
     logger.info('✅ Graceful shutdown completed');
   } catch (error) {
     logger.error('❌ Error during graceful shutdown', { error: error.message });

@@ -23,6 +23,13 @@ export const CONFIG = {
     apiKey: process.env.EVOLUTION_API_KEY!,
   },
 
+  // Redis / Queue
+  redis: {
+    enabled: process.env.REDIS_ENABLED === 'true',
+    url: process.env.REDIS_URL,
+    queueKey: process.env.SEND_QUEUE_KEY || 'chatengine:sendQueue',
+  },
+
   // Server
   server: {
     port: parseInt(process.env.PORT || '3001'),
@@ -57,5 +64,9 @@ export function validateConfig(): void {
 
   if (missing.length > 0) {
     throw new Error(`Missing required configuration: ${missing.join(', ')}`);
+  }
+
+  if (CONFIG.redis.enabled && !CONFIG.redis.url) {
+    throw new Error('Missing required configuration: redis.url');
   }
 }
