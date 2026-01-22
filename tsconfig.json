@@ -15,6 +15,7 @@
     "resolveJsonModule": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "useUnknownInCatchVariables": false,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

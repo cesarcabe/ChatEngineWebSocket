@@ -1,5 +1,5 @@
 import express from 'express';
-import { createServer, Server as HttpServer } from 'http';
+import { createServer as createHttpServer, Server as HttpServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -45,7 +45,7 @@ export async function createServer(): Promise<HttpServer> {
   });
 
   // Create HTTP server
-  const server = createServer(app);
+  const server = createHttpServer(app);
 
   // Initialize Evolution client
   const evolutionClient = new EvolutionClient();
