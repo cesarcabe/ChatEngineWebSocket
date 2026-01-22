@@ -32,6 +32,12 @@ export class EvolutionClient {
         auth: {
           apiKey: CONFIG.evolution.apiKey,
         },
+        query: {
+          apiKey: CONFIG.evolution.apiKey,
+        },
+        extraHeaders: {
+          apikey: CONFIG.evolution.apiKey,
+        },
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionDelay: 1000,
