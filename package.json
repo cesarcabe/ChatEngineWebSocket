@@ -1,11 +1,11 @@
 {
   "name": "chatengine-websocket",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Mini ChatEngine WebSocket server for Lovable integration",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node -r tsconfig-paths/register dist/index.js",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
@@ -37,7 +37,8 @@
     "helmet": "^8.0.0",
     "compression": "^1.7.5",
     "winston": "^3.17.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.16.5",

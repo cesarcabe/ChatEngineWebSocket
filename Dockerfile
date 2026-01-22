@@ -33,8 +33,9 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --omit=dev
 
-# Copy build output
+# Copy build output and tsconfig for path mapping
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 # Change ownership of the app directory
 RUN chown -R chatengine:nodejs /app
