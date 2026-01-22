@@ -168,6 +168,10 @@ export class WorkspaceDiscovery {
         return null;
       }
 
+      const whatsappNumber = Array.isArray(data?.whatsapp_numbers)
+        ? data.whatsapp_numbers[0]
+        : data?.whatsapp_numbers;
+
       return data ? {
         id: data.id,
         workspaceId: data.workspace_id,
@@ -175,10 +179,10 @@ export class WorkspaceDiscovery {
         whatsappNumberId: data.whatsapp_number_id,
         remoteJid: data.remote_jid,
         updatedAt: data.updated_at,
-        whatsappNumber: data.whatsapp_numbers ? {
-          id: data.whatsapp_numbers.id,
-          instanceName: data.whatsapp_numbers.instance_name,
-          status: data.whatsapp_numbers.status,
+        whatsappNumber: whatsappNumber ? {
+          id: whatsappNumber.id,
+          instanceName: whatsappNumber.instance_name,
+          status: whatsappNumber.status,
         } : null,
       } : null;
     } catch (error) {
@@ -207,6 +211,10 @@ export class WorkspaceDiscovery {
         return null;
       }
 
+      const whatsappNumber = Array.isArray(data?.whatsapp_numbers)
+        ? data.whatsapp_numbers[0]
+        : data?.whatsapp_numbers;
+
       return data ? {
         id: data.id,
         workspaceId: data.workspace_id,
@@ -214,10 +222,10 @@ export class WorkspaceDiscovery {
         whatsappNumberId: data.whatsapp_number_id,
         remoteJid: data.remote_jid,
         updatedAt: data.updated_at,
-        whatsappNumber: data.whatsapp_numbers ? {
-          id: data.whatsapp_numbers.id,
-          instanceName: data.whatsapp_numbers.instance_name,
-          status: data.whatsapp_numbers.status,
+        whatsappNumber: whatsappNumber ? {
+          id: whatsappNumber.id,
+          instanceName: whatsappNumber.instance_name,
+          status: whatsappNumber.status,
         } : null,
       } : null;
     } catch (error) {
