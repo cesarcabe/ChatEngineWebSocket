@@ -17,6 +17,7 @@ export class WebSocketServer {
   private workspaceDiscovery: WorkspaceDiscovery;
   private eventCoordinator: EventCoordinator;
   private clients = new Map<string, ConnectedClient>();
+  private subscriptions = new Map<string, Set<string>>();
 
   constructor(httpServer: HttpServer, eventCoordinator: EventCoordinator) {
     this.io = new SocketIOServer(httpServer, {
@@ -24,6 +25,7 @@ export class WebSocketServer {
         origin: "*", // In production, restrict to your domains
         methods: ["GET", "POST"],
       },
+      path: '/api/ws',
       transports: ['websocket', 'polling'],
     });
 
@@ -77,12 +79,15 @@ export class WebSocketServer {
   private async authenticateSocket(socket: Socket): Promise<AuthenticatedUser | null> {
     try {
       const token = socket.handshake.auth?.token;
+      const workspaceId =
+        socket.handshake.auth?.workspaceId ||
+        (typeof socket.handshake.query?.workspaceId === 'string' ? socket.handshake.query.workspaceId : null);
       if (!token) {
         logger.warn('No token provided in socket handshake', { socketId: socket.id });
         return null;
       }
 
-      const authResult = await this.jwtValidator.validateToken(token);
+      const authResult = await this.jwtValidator.validateToken(token, workspaceId);
       return authResult;
     } catch (error) {
       logger.error('Socket authentication failed', {
@@ -104,6 +109,7 @@ export class WebSocketServer {
     };
 
     this.clients.set(socket.id, client);
+    this.subscriptions.set(socket.id, new Set());
 
     // Handle disconnection
     socket.on('disconnect', () => {
@@ -112,6 +118,7 @@ export class WebSocketServer {
         userId: authResult.user.id,
       });
       this.clients.delete(socket.id);
+      this.subscriptions.delete(socket.id);
     });
   }
 
@@ -119,6 +126,53 @@ export class WebSocketServer {
    * Setup event handlers for authenticated client
    */
   private setupClientHandlers(socket: Socket, authResult: AuthenticatedUser): void {
+    // Subscribe to all allowed instances on connect
+    authResult.allowedInstances.forEach((instanceId) => {
+      this.eventCoordinator.subscribeToInstance(instanceId);
+    });
+
+    // Manage conversation subscriptions
+    socket.on('subscribe:conversation', (conversationId: string) => {
+      const subscriptions = this.subscriptions.get(socket.id);
+      if (subscriptions && conversationId) {
+        subscriptions.add(conversationId);
+      }
+    });
+
+    socket.on('unsubscribe:conversation', (conversationId: string) => {
+      const subscriptions = this.subscriptions.get(socket.id);
+      if (subscriptions && conversationId) {
+        subscriptions.delete(conversationId);
+      }
+    });
+
+    // Typing indicator
+    socket.on('typing', async (data: { conversationId: string; isTyping: boolean }) => {
+      try {
+        const conversation = await this.workspaceDiscovery.getConversationById(data.conversationId);
+        if (!conversation || conversation.workspaceId !== authResult.workspace.id) {
+          return;
+        }
+
+        const instanceName = conversation.whatsappNumber?.instanceName;
+        if (!instanceName || !authResult.allowedInstances.includes(instanceName)) {
+          return;
+        }
+
+        this.broadcastToWorkspace(authResult.workspace.id, 'typing', {
+          conversationId: data.conversationId,
+          userId: authResult.user.id,
+          isTyping: data.isTyping,
+        });
+      } catch (error) {
+        logger.error('Error handling typing indicator', {
+          socketId: socket.id,
+          error: error.message,
+          data,
+        });
+      }
+    });
+
     // Handle sendMessage command
     socket.on('sendMessage', async (data: LovableMessage) => {
       if (data.type !== 'sendMessage') return;
@@ -165,17 +219,27 @@ export class WebSocketServer {
     authResult: AuthenticatedUser,
     data: LovableMessage
   ): Promise<void> {
-    // Validate conversation belongs to allowed instances
-    const isAllowed = authResult.allowedInstances.some(instanceId =>
-      data.conversationId.startsWith(instanceId)
-    );
+    if (!data.content) {
+      throw new Error('Message content is required');
+    }
 
-    if (!isAllowed) {
+    const conversation = await this.workspaceDiscovery.getConversationById(data.conversationId);
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
+
+    if (conversation.workspaceId !== authResult.workspace.id) {
+      throw new Error('Conversation not allowed for this workspace');
+    }
+
+    const instanceName = conversation.whatsappNumber?.instanceName;
+    if (!instanceName || !authResult.allowedInstances.includes(instanceName)) {
       throw new Error('Conversation not allowed for this user');
     }
 
-    if (!data.content) {
-      throw new Error('Message content is required');
+    const remoteJid = conversation.remoteJid;
+    if (!remoteJid) {
+      throw new Error('Conversation does not have a valid WhatsApp number');
     }
 
     logger.info('Processing sendMessage command', {
@@ -185,12 +249,9 @@ export class WebSocketServer {
       contentLength: data.content.length,
     });
 
-    // Extract instance ID and phone number from conversation ID
-    const [instanceId, phoneNumber] = data.conversationId.split('_');
-
     // Forward to Evolution API via EventCoordinator
-    await this.eventCoordinator.sendMessage(instanceId, {
-      number: phoneNumber,
+    await this.eventCoordinator.sendMessage(instanceName, {
+      number: remoteJid,
       message: data.content,
     });
 
@@ -208,13 +269,22 @@ export class WebSocketServer {
     authResult: AuthenticatedUser,
     data: LovableMessage
   ): Promise<void> {
-    // Validate conversation belongs to allowed instances
-    const isAllowed = authResult.allowedInstances.some(instanceId =>
-      data.conversationId.startsWith(instanceId)
-    );
+    const conversation = await this.workspaceDiscovery.getConversationById(data.conversationId);
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
 
-    if (!isAllowed) {
+    if (conversation.workspaceId !== authResult.workspace.id) {
+      throw new Error('Conversation not allowed for this workspace');
+    }
+
+    const instanceName = conversation.whatsappNumber?.instanceName;
+    if (!instanceName || !authResult.allowedInstances.includes(instanceName)) {
       throw new Error('Conversation not allowed for this user');
+    }
+
+    if (!conversation.remoteJid) {
+      throw new Error('Conversation does not have a remote JID');
     }
 
     logger.info('Processing markAsRead command', {
@@ -223,11 +293,8 @@ export class WebSocketServer {
       conversationId: data.conversationId,
     });
 
-    // Extract instance ID from conversation ID
-    const [instanceId] = data.conversationId.split('_');
-
     // Forward to Evolution API via EventCoordinator
-    await this.eventCoordinator.markAsRead(instanceId, data.conversationId);
+    await this.eventCoordinator.markAsRead(instanceName, conversation.remoteJid);
 
     socket.emit('markedAsRead', {
       conversationId: data.conversationId,
@@ -251,6 +318,14 @@ export class WebSocketServer {
   broadcastToWorkspace(workspaceId: string, event: string, data: any): void {
     for (const [socketId, client] of this.clients) {
       if (client.user.workspace.id === workspaceId) {
+        if (event === 'message' && data?.conversationId) {
+          const subscriptions = this.subscriptions.get(socketId);
+          const isSubscribed = !subscriptions || subscriptions.size === 0 || subscriptions.has(data.conversationId);
+          if (!isSubscribed) {
+            continue;
+          }
+        }
+
         client.socket.emit(event, data);
       }
     }

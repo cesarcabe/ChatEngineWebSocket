@@ -9,6 +9,7 @@ export const CONFIG = {
     url: process.env.SUPABASE_URL!,
     anonKey: process.env.SUPABASE_ANON_KEY!,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    jwtSecret: process.env.SUPABASE_JWT_SECRET!,
   },
 
   // ChatEngine
@@ -40,7 +41,7 @@ export function validateConfig(): void {
     'supabase.url',
     'supabase.anonKey',
     'supabase.serviceRoleKey',
-    'chatengine.jwtSecret',
+    'supabase.jwtSecret',
     'evolution.baseUrl',
     'evolution.apiKey',
   ];

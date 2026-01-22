@@ -23,10 +23,15 @@ export class JwtValidator {
   /**
    * Validate JWT token and extract user information
    */
-  async validateToken(token: string): Promise<AuthenticatedUser> {
+  async validateToken(token: string, workspaceId?: string | null): Promise<AuthenticatedUser> {
     try {
       // First verify JWT signature and decode payload
       const payload = await this.verifyJwt(token);
+      const resolvedWorkspaceId = workspaceId || payload.workspace_id;
+
+      if (!resolvedWorkspaceId) {
+        throw new Error('Workspace ID is required');
+      }
 
       // Verify user exists and is active
       const user = await this.getUser(payload.user_id);
@@ -35,7 +40,7 @@ export class JwtValidator {
       }
 
       // Get workspace and verify user has access
-      const workspace = await this.getWorkspace(payload.workspace_id);
+      const workspace = await this.getWorkspace(resolvedWorkspaceId);
       if (!workspace) {
         throw new Error('Workspace not found');
       }
@@ -71,14 +76,14 @@ export class JwtValidator {
    */
   private async verifyJwt(token: string): Promise<JwtPayload> {
     try {
-      // Get Supabase JWT secret (this is the same secret used by Supabase)
-      const secret = new TextEncoder().encode(CONFIG.supabase.serviceRoleKey);
+      // Verify token using Supabase JWT secret
+      const secret = new TextEncoder().encode(CONFIG.supabase.jwtSecret);
 
       const { payload } = await jwtVerify(token, secret);
 
       // Validate required claims
-      if (!payload.sub || !payload.workspace_id) {
-        throw new Error('Missing required claims: sub or workspace_id');
+      if (!payload.sub) {
+        throw new Error('Missing required claim: sub');
       }
 
       // Check if token is expired
@@ -89,7 +94,7 @@ export class JwtValidator {
 
       return {
         user_id: payload.sub as string,
-        workspace_id: payload.workspace_id as string,
+        workspace_id: (payload.workspace_id as string) || '',
         exp: payload.exp || 0,
         iat: payload.iat || 0,
       };
@@ -194,7 +199,7 @@ export class JwtValidator {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id')
+        .select('instance_name')
         .eq('workspace_id', workspaceId)
         .eq('status', 'connected');
 
@@ -206,7 +211,7 @@ export class JwtValidator {
         return [];
       }
 
-      return data.map(instance => instance.id);
+      return data.map(instance => instance.instance_name).filter(Boolean);
     } catch (error) {
       logger.error('Exception fetching allowed instances', {
         error: error.message,

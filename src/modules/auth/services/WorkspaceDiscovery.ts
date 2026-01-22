@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CONFIG } from '@/config';
 import { logger } from '@/core/logger';
-import { Workspace, WhatsappNumber } from '@/types';
+import { Workspace, WhatsappNumber, ConversationRecord } from '@/types';
 
 export class WorkspaceDiscovery {
   private supabase: SupabaseClient;
@@ -55,7 +55,7 @@ export class WorkspaceDiscovery {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at')
+        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at, instance_name')
         .eq('workspace_id', workspaceId)
         .eq('status', 'connected');
 
@@ -72,6 +72,7 @@ export class WorkspaceDiscovery {
         workspaceId: instance.workspace_id,
         number: instance.phone_number,
         name: instance.internal_name,
+        instanceName: instance.instance_name,
         status: instance.status,
         createdAt: instance.created_at,
         updatedAt: instance.updated_at,
@@ -93,7 +94,7 @@ export class WorkspaceDiscovery {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
         .select('id')
-        .eq('id', instanceId)
+        .eq('instance_name', instanceId)
         .eq('workspace_id', workspaceId)
         .eq('status', 'connected')
         .maybeSingle();
@@ -125,8 +126,8 @@ export class WorkspaceDiscovery {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at')
-        .eq('id', instanceId)
+        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at, instance_name')
+        .eq('instance_name', instanceId)
         .maybeSingle();
 
       if (error) {
@@ -139,12 +140,91 @@ export class WorkspaceDiscovery {
         workspaceId: data.workspace_id,
         number: data.phone_number,
         name: data.internal_name,
+        instanceName: data.instance_name,
         status: data.status,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       } : null;
     } catch (error) {
       logger.error('Exception fetching instance', { error: error.message, instanceId });
+      return null;
+    }
+  }
+
+  /**
+   * Get conversation by remote JID within a workspace
+   */
+  async getConversationByRemoteJid(workspaceId: string, remoteJid: string): Promise<ConversationRecord | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('conversations')
+        .select('id, workspace_id, contact_id, whatsapp_number_id, remote_jid, updated_at, whatsapp_numbers(id, instance_name, status)')
+        .eq('workspace_id', workspaceId)
+        .eq('remote_jid', remoteJid)
+        .maybeSingle();
+
+      if (error) {
+        logger.error('Error fetching conversation by remote_jid', { error: error.message, workspaceId, remoteJid });
+        return null;
+      }
+
+      return data ? {
+        id: data.id,
+        workspaceId: data.workspace_id,
+        contactId: data.contact_id,
+        whatsappNumberId: data.whatsapp_number_id,
+        remoteJid: data.remote_jid,
+        updatedAt: data.updated_at,
+        whatsappNumber: data.whatsapp_numbers ? {
+          id: data.whatsapp_numbers.id,
+          instanceName: data.whatsapp_numbers.instance_name,
+          status: data.whatsapp_numbers.status,
+        } : null,
+      } : null;
+    } catch (error) {
+      logger.error('Exception fetching conversation by remote_jid', {
+        error: error.message,
+        workspaceId,
+        remoteJid,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Get conversation by ID
+   */
+  async getConversationById(conversationId: string): Promise<ConversationRecord | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('conversations')
+        .select('id, workspace_id, contact_id, whatsapp_number_id, remote_jid, updated_at, whatsapp_numbers(id, instance_name, status)')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (error) {
+        logger.error('Error fetching conversation by id', { error: error.message, conversationId });
+        return null;
+      }
+
+      return data ? {
+        id: data.id,
+        workspaceId: data.workspace_id,
+        contactId: data.contact_id,
+        whatsappNumberId: data.whatsapp_number_id,
+        remoteJid: data.remote_jid,
+        updatedAt: data.updated_at,
+        whatsappNumber: data.whatsapp_numbers ? {
+          id: data.whatsapp_numbers.id,
+          instanceName: data.whatsapp_numbers.instance_name,
+          status: data.whatsapp_numbers.status,
+        } : null,
+      } : null;
+    } catch (error) {
+      logger.error('Exception fetching conversation by id', {
+        error: error.message,
+        conversationId,
+      });
       return null;
     }
   }

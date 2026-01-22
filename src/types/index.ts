@@ -18,6 +18,7 @@ export interface WhatsappNumber {
   workspaceId: string;
   number: string;
   name: string;
+  instanceName?: string | null;
   status: 'connected' | 'disconnected' | 'connecting';
   createdAt: string;
   updatedAt: string;
@@ -45,6 +46,20 @@ export interface JwtPayload {
   workspace_id: string;
   exp: number;
   iat: number;
+}
+
+export interface ConversationRecord {
+  id: string;
+  workspaceId: string;
+  contactId: string | null;
+  whatsappNumberId: string | null;
+  remoteJid: string | null;
+  updatedAt: string | null;
+  whatsappNumber?: {
+    id: string;
+    instanceName: string | null;
+    status: string | null;
+  } | null;
 }
 
 export interface AuthenticatedUser {

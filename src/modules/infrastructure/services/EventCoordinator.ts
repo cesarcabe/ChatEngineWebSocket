@@ -62,11 +62,27 @@ export class EventCoordinator {
         return;
       }
 
+      const remoteJid = data?.key?.remoteJid;
+      if (!remoteJid) {
+        logger.warn('Evolution message missing remoteJid', { instance });
+        return;
+      }
+
+      const conversation = await this.workspaceDiscovery.getConversationByRemoteJid(workspaceId, remoteJid);
+      if (!conversation) {
+        logger.warn('No conversation found for remoteJid', { workspaceId, remoteJid });
+        return;
+      }
+
       // Transform Evolution message to ChatEngine format
-      const chatEngineMessage = this.transformMessageToChatEngine(data, workspaceId);
+      const chatEngineMessage = this.transformMessageToChatEngine(data, workspaceId, conversation.id);
 
       // Broadcast to all clients in the workspace
       this.wsServer?.broadcastToWorkspace(workspaceId, 'message', chatEngineMessage);
+
+      // Emit conversation update for lists
+      const conversationUpdate = this.transformConversationUpdate(conversation, chatEngineMessage);
+      this.wsServer?.broadcastToWorkspace(workspaceId, 'conversation', conversationUpdate);
 
       logger.info('Forwarded message to workspace clients', {
         instance,
@@ -136,12 +152,12 @@ export class EventCoordinator {
   /**
    * Transform Evolution message to ChatEngine format
    */
-  private transformMessageToChatEngine(evolutionData: any, workspaceId: string): any {
+  private transformMessageToChatEngine(evolutionData: any, workspaceId: string, conversationId: string): any {
     // This is a simplified transformation - adjust based on Evolution API response format
     return {
       id: evolutionData.id?.id || evolutionData.key?.id || `msg_${Date.now()}`,
       workspaceId,
-      conversationId: `${evolutionData.key?.remoteJid}_${workspaceId}`,
+      conversationId,
       senderId: evolutionData.key?.participant || evolutionData.key?.remoteJid || 'system',
       type: this.mapMessageType(evolutionData.message),
       content: this.extractMessageContent(evolutionData.message),
@@ -151,6 +167,27 @@ export class EventCoordinator {
         timestamp: evolutionData.messageTimestamp,
       },
       createdAt: new Date(evolutionData.messageTimestamp * 1000).toISOString(),
+    };
+  }
+
+  /**
+   * Transform conversation update to ChatEngine format
+   */
+  private transformConversationUpdate(conversation: { id: string; workspaceId: string; contactId: string | null; whatsappNumberId: string | null; updatedAt: string | null }, lastMessage: any): any {
+    return {
+      id: conversation.id,
+      workspaceId: conversation.workspaceId,
+      contactId: conversation.contactId ?? undefined,
+      whatsappNumberId: conversation.whatsappNumberId ?? undefined,
+      channel: 'whatsapp',
+      participants: [],
+      lastMessage: lastMessage ? {
+        id: lastMessage.id,
+        content: lastMessage.content,
+        senderId: lastMessage.senderId,
+        createdAt: lastMessage.createdAt,
+      } : undefined,
+      updatedAt: conversation.updatedAt || new Date().toISOString(),
     };
   }
 
