@@ -62,9 +62,13 @@ export class EventCoordinator {
         return;
       }
 
-      const remoteJid = data?.key?.remoteJid;
+      const extracted = this.extractEvolutionPayload(data);
+      const remoteJid = extracted.remoteJid;
       if (!remoteJid) {
-        logger.warn('Evolution message missing remoteJid', { instance });
+        logger.debug('Evolution message missing remoteJid', {
+          instance,
+          keys: data ? Object.keys(data) : [],
+        });
         return;
       }
 
@@ -75,7 +79,7 @@ export class EventCoordinator {
       }
 
       // Transform Evolution message to ChatEngine format
-      const chatEngineMessage = this.transformMessageToChatEngine(data, workspaceId, conversation.id);
+      const chatEngineMessage = this.transformMessageToChatEngine(extracted, workspaceId, conversation.id);
 
       // Broadcast to all clients in the workspace
       this.wsServer?.broadcastToWorkspace(workspaceId, 'message', chatEngineMessage);
@@ -152,10 +156,15 @@ export class EventCoordinator {
   /**
    * Transform Evolution message to ChatEngine format
    */
-  private transformMessageToChatEngine(evolutionData: any, workspaceId: string, conversationId: string): any {
+  private transformMessageToChatEngine(
+    evolutionData: { key: any; message: any; messageTimestamp?: number; remoteJid?: string | null },
+    workspaceId: string,
+    conversationId: string
+  ): any {
     // This is a simplified transformation - adjust based on Evolution API response format
+    const messageTimestamp = evolutionData.messageTimestamp ?? Math.floor(Date.now() / 1000);
     return {
-      id: evolutionData.id?.id || evolutionData.key?.id || `msg_${Date.now()}`,
+      id: evolutionData.key?.id || `msg_${Date.now()}`,
       workspaceId,
       conversationId,
       senderId: evolutionData.key?.participant || evolutionData.key?.remoteJid || 'system',
@@ -164,9 +173,9 @@ export class EventCoordinator {
       status: 'delivered',
       metadata: {
         providerMessageId: evolutionData.key?.id,
-        timestamp: evolutionData.messageTimestamp,
+        timestamp: messageTimestamp,
       },
-      createdAt: new Date(evolutionData.messageTimestamp * 1000).toISOString(),
+      createdAt: new Date(messageTimestamp * 1000).toISOString(),
     };
   }
 
@@ -224,6 +233,60 @@ export class EventCoordinator {
     if (message?.videoMessage?.caption) return message.videoMessage.caption;
     if (message?.documentMessage?.caption) return message.documentMessage.caption;
     return '[Unsupported message type]';
+  }
+
+  private extractEvolutionPayload(evolutionData: any): {
+    key: any;
+    message: any;
+    messageTimestamp?: number;
+    remoteJid?: string | null;
+  } {
+    const data = evolutionData ?? {};
+    const messageWrapper =
+      data?.message ||
+      data?.messages?.[0] ||
+      data?.data?.message ||
+      data?.data?.messages?.[0] ||
+      data?.data ||
+      data;
+
+    const key =
+      data?.key ||
+      data?.message?.key ||
+      data?.messages?.[0]?.key ||
+      data?.data?.key ||
+      data?.data?.message?.key ||
+      data?.data?.messages?.[0]?.key ||
+      messageWrapper?.key ||
+      null;
+
+    const message =
+      data?.message?.message ||
+      data?.messages?.[0]?.message ||
+      data?.data?.message?.message ||
+      data?.data?.messages?.[0]?.message ||
+      messageWrapper?.message ||
+      messageWrapper;
+
+    const messageTimestamp =
+      data?.messageTimestamp ||
+      data?.message?.messageTimestamp ||
+      data?.messages?.[0]?.messageTimestamp ||
+      data?.data?.messageTimestamp ||
+      data?.data?.messages?.[0]?.messageTimestamp;
+
+    const remoteJid =
+      key?.remoteJid ||
+      data?.remoteJid ||
+      data?.data?.remoteJid ||
+      messageWrapper?.key?.remoteJid;
+
+    return {
+      key,
+      message,
+      messageTimestamp,
+      remoteJid,
+    };
   }
 
   /**
