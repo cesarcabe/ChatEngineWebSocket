@@ -1,6 +1,6 @@
 {
   "name": "chatengine-websocket",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Mini ChatEngine WebSocket server for Lovable integration",
   "main": "dist/index.js",
   "scripts": {

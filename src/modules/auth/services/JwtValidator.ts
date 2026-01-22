@@ -194,7 +194,7 @@ export class JwtValidator {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id, number')
+        .select('id')
         .eq('workspace_id', workspaceId)
         .eq('status', 'connected');
 

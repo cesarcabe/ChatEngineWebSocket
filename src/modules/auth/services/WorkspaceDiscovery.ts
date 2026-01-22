@@ -55,7 +55,7 @@ export class WorkspaceDiscovery {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id, workspace_id, number, name, status, created_at, updated_at')
+        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at')
         .eq('workspace_id', workspaceId)
         .eq('status', 'connected');
 
@@ -70,8 +70,8 @@ export class WorkspaceDiscovery {
       return data.map(instance => ({
         id: instance.id,
         workspaceId: instance.workspace_id,
-        number: instance.number,
-        name: instance.name,
+        number: instance.phone_number,
+        name: instance.internal_name,
         status: instance.status,
         createdAt: instance.created_at,
         updatedAt: instance.updated_at,
@@ -125,7 +125,7 @@ export class WorkspaceDiscovery {
     try {
       const { data, error } = await this.supabase
         .from('whatsapp_numbers')
-        .select('id, workspace_id, number, name, status, created_at, updated_at')
+        .select('id, workspace_id, phone_number, internal_name, status, created_at, updated_at')
         .eq('id', instanceId)
         .maybeSingle();
 
@@ -137,8 +137,8 @@ export class WorkspaceDiscovery {
       return data ? {
         id: data.id,
         workspaceId: data.workspace_id,
-        number: data.number,
-        name: data.name,
+        number: data.phone_number,
+        name: data.internal_name,
         status: data.status,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
