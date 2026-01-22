@@ -136,6 +136,14 @@ export class EvolutionClient {
     // Handle other Evolution events
     this.socket.on('messages.update', (data: any) => {
       logger.debug('Received messages.update from Evolution', { instance: data.instance });
+      const message: EvolutionMessage = {
+        event: 'messages.update',
+        instance: data.instance,
+        data,
+        timestamp: new Date().toISOString(),
+      };
+
+      this.emitEvent('messages.update', message);
     });
 
     this.socket.on('contacts.upsert', (data: any) => {

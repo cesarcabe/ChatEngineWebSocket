@@ -30,11 +30,12 @@ export interface LovableMessage {
   conversationId: string;
   content?: string;
   messageId?: string;
+  replyToMessageId?: string;
   timestamp: string;
 }
 
 export interface EvolutionMessage {
-  event: 'messages.upsert' | 'connection.update';
+  event: 'messages.upsert' | 'messages.update' | 'connection.update';
   instance: string;
   data: any;
   timestamp: string;

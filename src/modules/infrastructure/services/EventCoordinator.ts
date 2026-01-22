@@ -44,7 +44,13 @@ export class EventCoordinator {
       await this.handleConnectionEvent(message);
     };
 
+    // Handle messages.update events (status updates)
+    const messageUpdateHandler: EvolutionEventHandler = async (message: EvolutionMessage) => {
+      await this.handleMessageUpdateEvent(message);
+    };
+
     this.evolutionClient.on('messages.upsert', messageHandler);
+    this.evolutionClient.on('messages.update', messageUpdateHandler);
     this.evolutionClient.on('connection.update', connectionHandler);
   }
 
@@ -130,6 +136,63 @@ export class EventCoordinator {
 
     } catch (error) {
       logger.error('Error handling connection event', {
+        error: error.message,
+        message,
+      });
+    }
+  }
+
+  /**
+   * Handle messages.update events (status updates) from Evolution
+   */
+  private async handleMessageUpdateEvent(message: EvolutionMessage): Promise<void> {
+    try {
+      const { instance, data } = message;
+
+      const workspaceId = await this.findWorkspaceForInstance(instance);
+      if (!workspaceId) {
+        logger.warn('No workspace found for instance', { instance });
+        return;
+      }
+
+      const extracted = this.extractEvolutionPayload(data);
+      const remoteJid = extracted.remoteJid;
+      if (!remoteJid) {
+        logger.debug('Evolution status update missing remoteJid', {
+          instance,
+          keys: data ? Object.keys(data) : [],
+        });
+        return;
+      }
+
+      const conversation = await this.workspaceDiscovery.getConversationByRemoteJid(workspaceId, remoteJid);
+      if (!conversation) {
+        logger.warn('No conversation found for remoteJid (status update)', { workspaceId, remoteJid });
+        return;
+      }
+
+      const providerMessageId = this.extractProviderMessageId(data);
+      if (!providerMessageId) {
+        logger.debug('Evolution status update missing message id', { instance, workspaceId });
+        return;
+      }
+
+      const status = this.mapMessageStatus(data);
+
+      this.wsServer?.broadcastToWorkspace(workspaceId, 'messageStatus', {
+        messageId: providerMessageId,
+        status,
+        conversationId: conversation.id,
+      });
+
+      logger.info('Forwarded message status update', {
+        instance,
+        workspaceId,
+        messageId: providerMessageId,
+        status,
+      });
+    } catch (error) {
+      logger.error('Error handling message status update', {
         error: error.message,
         message,
       });
@@ -287,6 +350,51 @@ export class EventCoordinator {
       messageTimestamp,
       remoteJid,
     };
+  }
+
+  private extractProviderMessageId(evolutionData: any): string | null {
+    const data = evolutionData ?? {};
+    return (
+      data?.id ||
+      data?.messageId ||
+      data?.key?.id ||
+      data?.message?.key?.id ||
+      data?.data?.id ||
+      data?.data?.messageId ||
+      data?.data?.key?.id ||
+      data?.data?.message?.key?.id ||
+      null
+    );
+  }
+
+  private mapMessageStatus(evolutionData: any): 'pending' | 'sent' | 'delivered' | 'read' | 'failed' {
+    const rawStatus =
+      evolutionData?.status ??
+      evolutionData?.ack ??
+      evolutionData?.update?.status ??
+      evolutionData?.data?.status ??
+      evolutionData?.data?.ack ??
+      evolutionData?.data?.update?.status ??
+      null;
+
+    if (typeof rawStatus === 'string') {
+      const normalized = rawStatus.toLowerCase();
+      if (normalized === 'pending') return 'pending';
+      if (normalized === 'sent') return 'sent';
+      if (normalized === 'delivered') return 'delivered';
+      if (normalized === 'read') return 'read';
+      if (normalized === 'failed' || normalized === 'error') return 'failed';
+    }
+
+    const numeric = typeof rawStatus === 'number' ? rawStatus : Number(rawStatus);
+    if (!Number.isNaN(numeric)) {
+      if (numeric <= 0) return 'pending';
+      if (numeric === 1) return 'sent';
+      if (numeric === 2) return 'delivered';
+      if (numeric >= 3) return 'read';
+    }
+
+    return 'sent';
   }
 
   /**

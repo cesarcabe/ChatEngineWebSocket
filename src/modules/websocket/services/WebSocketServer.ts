@@ -1,4 +1,5 @@
 import { Server as HttpServer } from 'http';
+import { randomUUID } from 'crypto';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { JwtValidator, WorkspaceDiscovery } from '@/modules/auth';
 import { EventCoordinator } from '@/modules/infrastructure';
@@ -249,6 +250,40 @@ export class WebSocketServer {
       contentLength: data.content.length,
     });
 
+    const now = new Date();
+    const optimisticMessageId = data.messageId || randomUUID();
+
+    // Emit optimistic message to render instantly on clients
+    this.broadcastToWorkspace(authResult.workspace.id, 'message', {
+      id: optimisticMessageId,
+      workspaceId: authResult.workspace.id,
+      conversationId: data.conversationId,
+      senderId: authResult.user.id,
+      type: 'text',
+      content: data.content,
+      replyToMessageId: data.replyToMessageId,
+      status: 'pending',
+      metadata: data.messageId ? { clientMessageId: data.messageId } : undefined,
+      createdAt: now.toISOString(),
+    });
+
+    // Update conversation preview immediately
+    this.broadcastToWorkspace(authResult.workspace.id, 'conversation', {
+      id: conversation.id,
+      workspaceId: authResult.workspace.id,
+      contactId: conversation.contactId ?? undefined,
+      whatsappNumberId: conversation.whatsappNumberId ?? undefined,
+      channel: 'whatsapp',
+      participants: [],
+      lastMessage: {
+        id: optimisticMessageId,
+        content: data.content,
+        senderId: authResult.user.id,
+        createdAt: now.toISOString(),
+      },
+      updatedAt: now.toISOString(),
+    });
+
     // Forward to Evolution API via EventCoordinator
     await this.eventCoordinator.sendMessage(instanceName, {
       number: remoteJid,
@@ -257,6 +292,7 @@ export class WebSocketServer {
 
     socket.emit('messageSent', {
       conversationId: data.conversationId,
+      messageId: optimisticMessageId,
       timestamp: new Date().toISOString(),
     });
   }
