@@ -1,5 +1,5 @@
 # Multi-stage build for optimized production image
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -7,11 +7,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (including dev for build)
+RUN npm ci
+
+# Build the application
+RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 
 # Create app directory
 WORKDIR /app
@@ -23,15 +26,11 @@ RUN adduser -S chatengine -u 1001
 # Copy package files
 COPY package*.json ./
 
-# Copy dependencies from builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Install production dependencies only
+RUN npm ci --omit=dev
 
-# Copy source code
-COPY src ./src
-COPY tsconfig.json ./
-
-# Build the application
-RUN npm run build
+# Copy build output
+COPY --from=builder /app/dist ./dist
 
 # Change ownership of the app directory
 RUN chown -R chatengine:nodejs /app
