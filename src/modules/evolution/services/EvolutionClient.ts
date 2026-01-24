@@ -200,38 +200,47 @@ export class EvolutionClient {
     message: string;
     options?: any;
   }): Promise<any> {
-    if (!this.socket?.connected) {
-      throw new Error('Not connected to Evolution API');
-    }
+    const baseUrl = CONFIG.evolution.baseUrl.replace(/\/+$/, '');
+    const url = `${baseUrl}/message/sendText/${instanceId}`;
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Send message timeout'));
-      }, 30000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-      // Listen for response
-      const responseHandler = (response: any) => {
-        if (response.instance === instanceId) {
-          clearTimeout(timeout);
-          this.socket!.off('sendMessageResponse', responseHandler);
-          resolve(response);
-        }
-      };
-
-      this.socket!.on('sendMessageResponse', responseHandler);
-
-      // Send message
-      this.socket!.emit('sendMessage', {
-        instance: instanceId,
-        ...payload,
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: CONFIG.evolution.apiKey,
+        },
+        body: JSON.stringify({
+          number: payload.number,
+          text: payload.message,
+        }),
+        signal: controller.signal,
       });
 
-      logger.info('Sent message via Evolution', {
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || `Evolution API error (${response.status})`);
+      }
+
+      logger.info('Sent message via Evolution (HTTP)', {
         instanceId,
         number: payload.number,
         messageLength: payload.message.length,
       });
-    });
+
+      return data;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Send message timeout');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**
